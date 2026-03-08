@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>모션 에셋 마스터 툴 (크로마키 & D&D)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #2c2f33; color: #fff; }
+        .panel { background: #23272a; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .upload-section { display: flex; gap: 20px; border-bottom: 1px solid #4f545c; padding-bottom: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+        .upload-box { flex: 1; background: #2f3136; padding: 15px; border-radius: 8px; border: 1px dashed #7289da; min-width: 300px; }
+        
+        .chroma-settings { background: #202225; padding: 15px; border-radius: 8px; border: 1px solid #43b581; margin-bottom: 20px; }
+        .setting-item { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .setting-item label { font-size: 13px; color: #b9bbbe; width: 110px; }
+        
+        .toolbar { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+        
+        .preview-area { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; padding: 15px; background: #2c2f33; border: 1px solid #4f545c; border-radius: 8px; min-height: 120px; max-height: 500px; overflow-y: auto; align-items: flex-start; }
+        
+        /* D&D 관련 스타일 */
+        .frame-item { display: flex; flex-direction: column; align-items: center; background: #202225; border: 1px solid #7289da; border-radius: 4px; padding: 8px; width: 120px; position: relative; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
+        .frame-item:active { cursor: grabbing; }
+        .frame-item.dragging { opacity: 0.5; transform: scale(0.95); border: 2px dashed #43b581; }
+        .frame-item.drag-over { border: 2px solid #faa61a; transform: translateY(-5px); }
+        
+        .frame-header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .frame-cb { cursor: pointer; width: 16px; height: 16px; accent-color: #7289da; }
+        
+        .frame-item img { max-width: 100%; max-height: 100px; display: block; background-image: linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0px; border-radius: 4px; pointer-events: none; /* D&D 방해 방지 */ }
+        .frame-item span.filename { font-size: 11px; color: #b9bbbe; margin-top: 8px; text-align: center; word-break: break-all; pointer-events: none; }
+        
+        button { padding: 8px 12px; background-color: #7289da; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #5b6eae; }
+        button:disabled { background-color: #4f545c; cursor: not-allowed; }
+        .btn-success { background-color: #43b581; }
+        .btn-success:hover { background-color: #3ca374; }
+        .btn-secondary { background-color: #4f545c; }
+        .btn-secondary:hover { background-color: #686d76; }
+        .btn-danger { background-color: #f04747; } 
+        .btn-danger:hover { background-color: #d83c3c; }
+        .btn-chroma { background-color: #e67e22; }
+        .btn-chroma:hover { background-color: #d35400; }
+        
+        input[type="number"], input[type="text"], input[type="range"] { padding: 5px; border-radius: 4px; border: 1px solid #7289da; background: #2f3136; color: white; }
+        input[type="color"] { border: none; width: 40px; height: 25px; cursor: pointer; background: none; }
+        
+        /* 모달 스타일 */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
+        .modal-content { background: #2c2f33; padding: 20px; border-radius: 8px; border: 2px solid #7289da; display: flex; flex-direction: column; align-items: center; max-width: 90%; max-height: 90%; }
+        .modal-content img { max-width: 100%; max-height: 60vh; background-image: linear-gradient(45deg, #808080 25%, transparent 25%), linear-gradient(-45deg, #808080 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #808080 75%), linear-gradient(-45deg, transparent 75%, #808080 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; border-radius: 4px; margin-bottom: 15px; }
+        .modal-controls { display: flex; gap: 10px; align-items: center; width: 100%; justify-content: center; }
+        
+        video, canvas { display: none; }
+        #result-area { display: none; margin-top: 20px; padding: 20px; background: #23272a; border-radius: 8px; border: 2px solid #43b581; }
+        #result-image { max-width: 100%; max-height: 300px; display: block; margin-top: 10px; border-radius: 4px; }
+        .status-text { color: #faa61a; font-weight: bold; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="panel">
+        <h2>🛠️ 모션 에셋 마스터 툴</h2>
+
+        
+
+        <div class="upload-section">
+            <div class="upload-box">
+                <h3 style="margin-top: 0;">🎥 1. 동영상에서 프레임 추출</h3>
+                <input type="file" id="video-upload" accept="video/*"><br><br>
+                
+                <div class="setting-item">
+                    <label>파일명 접두사:</label>
+                    <input type="text" id="prefix-input" value="frame" style="width: 100px;">
+                    <span style="font-size: 11px; color: #b9bbbe;">_0000.png</span>
+                </div>
+                <div class="setting-item">
+                    <label>추출 FPS: </label>
+                    <input type="number" id="fps-input" value="10" min="1" max="60" style="width: 60px;">
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <button id="extract-raw-btn" class="btn-secondary" disabled>원본 그대로 추출</button>
+                    <button id="extract-chroma-btn" class="btn-chroma" disabled>크로마키 적용 추출</button>
+                </div>
+            </div>
+
+            <div class="upload-box">
+                <h3 style="margin-top: 0;">📁 2. 이미지 프레임 추가 (.png 변환)</h3>
+                <p style="font-size: 12px; color: #b9bbbe;">어떤 이미지를 올리든 무조건 PNG로 변환되어 리스트에 추가됩니다.</p>
+                <input type="file" id="image-upload" accept="image/*" multiple><br><br>
+                <p style="font-size: 11px; color: #7289da;">* 파일을 업로드하면 아래 리스트 끝에 자동으로 추가됩니다.</p>
+            </div>
+        </div>
+
+        <div class="chroma-settings">
+            <h3 style="margin-top: 0; margin-bottom: 5px;">🎨 공통 크로마키 설정</h3>
+            <p style="font-size: 12px; color: #b9bbbe; margin-top: 0; margin-bottom: 15px;">동영상 추출 및 불러온 이미지에 공통으로 적용되는 색상/강도 설정입니다.</p>
+            <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+                <div class="setting-item">
+                    <label>제거할 배경색:</label>
+                    <input type="color" id="chroma-color" value="#00ff00">
+                </div>
+                <div class="setting-item" style="width: 350px;">
+                    <label>제거 강도 (0~100):</label>
+                    <input type="range" id="chroma-threshold" min="0" max="100" value="30" style="flex: 1;">
+                    <input type="number" id="chroma-threshold-num" min="0" max="100" value="30" style="width: 60px; margin-left: 10px;">
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px;">
+            <h3 style="margin: 0;">프레임 미리보기 (D&D 순서변경 가능) - <span id="frame-count">0</span>장</h3>
+            <button id="clear-all-btn" class="btn-danger">전체 목록 비우기</button>
+        </div>
+        
+        <p id="global-status" class="status-text">작업을 선택해 주세요.</p>
+        
+        <div class="toolbar">
+            <button id="btn-select-all" class="btn-secondary">✓ 전체 선택/해제</button>
+            <button id="btn-delete-selected" class="btn-secondary">🗑️ 선택 삭제</button>
+            <button id="btn-duplicate-selected" class="btn-secondary">📄 선택 복제</button>
+            <button id="btn-apply-chroma" class="btn-chroma">✨ 선택 이미지 크로마키 적용</button>
+            <button id="btn-auto-rename" class="btn-success" style="margin-left: auto;">🔢 현재 순서대로 이름 재정렬</button>
+            <label style="font-size: 12px; cursor: pointer;">
+                <input type="checkbox" id="auto-rename-cb" checked> D&D 이동 시 자동 넘버링
+            </label>
+        </div>
+
+        <div class="preview-area" id="preview-area"></div>
+
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #4f545c;">
+            <label style="font-weight: bold; margin-right: 10px;">GIF 속도 (FPS): </label>
+            <input type="number" id="gif-fps-input" value="10" min="1" max="60" style="width:60px; margin-right: 20px;">
+            
+            <button id="make-gif-btn" class="btn-success" disabled>GIF 생성</button>
+            <button id="make-sprite-btn" class="btn-success" disabled>Sprite Sheet 생성</button>
+            <button id="download-zip-btn" class="btn-success" disabled>현재 리스트 ZIP 다운로드</button>
+        </div>
+    </div>
+
+    <div id="result-area">
+        <h3 id="result-title">생성 결과</h3>
+        <img id="result-image" src="">
+        <br><br>
+        <button id="download-result-btn" class="btn-secondary">결과물 다운로드</button>
+    </div>
+
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal-content">
+            <h3 style="margin-top:0;">🔍 이미지 상세 및 이름 변경</h3>
+            <img id="modal-img" src="">
+            <div class="modal-controls">
+                <label>파일명:</label>
+                <input type="text" id="modal-filename-input" style="width: 200px;">
+                <span style="font-size: 14px; color: #b9bbbe;">.png</span>
+                <button id="modal-save-btn" class="btn-success">저장 및 닫기</button>
+                <button id="modal-close-btn" class="btn-secondary">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <video id="video-element" muted playsinline></video>
+    <canvas id="canvas-element"></canvas>
+
+    <script>
+        // DOM 요소 연결
+        const videoUpload = document.getElementById('video-upload');
+        const extractRawBtn = document.getElementById('extract-raw-btn');
+        const extractChromaBtn = document.getElementById('extract-chroma-btn');
+        const prefixInput = document.getElementById('prefix-input');
+        
+        const chromaColorInput = document.getElementById('chroma-color');
+        const chromaThresholdRange = document.getElementById('chroma-threshold');
+        const chromaThresholdNum = document.getElementById('chroma-threshold-num');
+        
+        const imageUpload = document.getElementById('image-upload');
+        const previewArea = document.getElementById('preview-area');
+        const globalStatus = document.getElementById('global-status');
+        const frameCountSpan = document.getElementById('frame-count');
+        const clearAllBtn = document.getElementById('clear-all-btn');
+        
+        const btnSelectAll = document.getElementById('btn-select-all');
+        const btnDeleteSelected = document.getElementById('btn-delete-selected');
+        const btnDuplicateSelected = document.getElementById('btn-duplicate-selected');
+        const btnApplyChroma = document.getElementById('btn-apply-chroma');
+        const btnAutoRename = document.getElementById('btn-auto-rename');
+        const autoRenameCb = document.getElementById('auto-rename-cb');
+
+        const video = document.getElementById('video-element');
+        const canvas = document.getElementById('canvas-element');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        // Modal 요소
+        const modalOverlay = document.getElementById('modal-overlay');
+        const modalImg = document.getElementById('modal-img');
+        const modalFilenameInput = document.getElementById('modal-filename-input');
+        const modalSaveBtn = document.getElementById('modal-save-btn');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        let currentEditIndex = -1; // 모달에서 수정 중인 프레임 인덱스
+        
+        // ... (나머지 출력/다운로드 버튼 동일)
+        const makeGifBtn = document.getElementById('make-gif-btn');
+        const makeSpriteBtn = document.getElementById('make-sprite-btn');
+        const downloadZipBtn = document.getElementById('download-zip-btn');
+        const gifFpsInput = document.getElementById('gif-fps-input');
+        const resultArea = document.getElementById('result-area');
+        const resultImage = document.getElementById('result-image');
+        const downloadResultBtn = document.getElementById('download-result-btn');
+        const resultTitle = document.getElementById('result-title');
+
+        let currentFrames = [];
+        let videoFileUrl = '';
+        let resultBlobUrl = '';
+        let resultFileName = '';
+        let draggedIndex = null; // D&D 추적용
+
+        // 동기화
+        chromaThresholdRange.addEventListener('input', (e) => chromaThresholdNum.value = e.target.value);
+        chromaThresholdNum.addEventListener('input', (e) => {
+            let val = parseInt(e.target.value, 10) || 0;
+            if (val < 0) val = 0; if (val > 100) val = 100;
+            chromaThresholdNum.value = val; chromaThresholdRange.value = val;
+        });
+
+        function updateUI() {
+            frameCountSpan.innerText = currentFrames.length;
+            const hasFrames = currentFrames.length > 0;
+            makeGifBtn.disabled = !hasFrames;
+            makeSpriteBtn.disabled = !hasFrames;
+            downloadZipBtn.disabled = !hasFrames;
+        }
+
+        clearAllBtn.addEventListener('click', () => {
+            if(!confirm("모든 프레임을 삭제하시겠습니까?")) return;
+            currentFrames.forEach(frame => URL.revokeObjectURL(frame.url));
+            currentFrames = [];
+            renderPreview();
+            resultArea.style.display = 'none';
+            globalStatus.innerText = '모든 프레임이 초기화되었습니다.';
+        });
+
+        // 자동 이름 재정렬 함수
+        function autoRenumberFrames() {
+            const prefix = prefixInput.value.trim() || 'frame';
+            currentFrames.forEach((frame, idx) => {
+                frame.filename = `${prefix}_${String(idx).padStart(4, '0')}.png`;
+            });
+            renderPreview();
+        }
+        btnAutoRename.addEventListener('click', () => {
+            autoRenumberFrames();
+            globalStatus.innerText = '모든 파일명이 순서대로 재정렬되었습니다.';
+        });
+
+        // ----------------------------------------------------
+        // [개선 4 & 5] 렌더링 및 Drag & Drop 로직
+        // ----------------------------------------------------
+        function renderPreview() {
+            previewArea.innerHTML = '';
+            currentFrames.forEach((frame, index) => {
+                const container = document.createElement('div');
+                container.className = 'frame-item';
+                container.draggable = true; // D&D 활성화
+                container.dataset.index = index;
+
+                // --- D&D 이벤트 ---
+                container.addEventListener('dragstart', (e) => {
+                    draggedIndex = index;
+                    setTimeout(() => container.classList.add('dragging'), 0);
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                container.addEventListener('dragend', () => {
+                    container.classList.remove('dragging');
+                    draggedIndex = null;
+                });
+                container.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    if(draggedIndex === index) return;
+                    container.classList.add('drag-over');
+                });
+                container.addEventListener('dragleave', () => {
+                    container.classList.remove('drag-over');
+                });
+                container.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    container.classList.remove('drag-over');
+                    if (draggedIndex !== null && draggedIndex !== index) {
+                        // 배열 순서 변경
+                        const [movedItem] = currentFrames.splice(draggedIndex, 1);
+                        currentFrames.splice(index, 0, movedItem);
+                        
+                        // 자동 넘버링 체크박스가 켜져있으면 이름 덮어쓰기
+                        if(autoRenameCb.checked) autoRenumberFrames();
+                        else renderPreview();
+                        
+                        globalStatus.innerText = '프레임 순서가 변경되었습니다.';
+                    }
+                });
+
+                // --- 내부 요소 ---
+                const header = document.createElement('div');
+                header.className = 'frame-header';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'frame-cb';
+                checkbox.dataset.index = index;
+                
+                const indexLabel = document.createElement('span');
+                indexLabel.innerText = `#${index + 1}`;
+                indexLabel.style.fontSize = '12px';
+                indexLabel.style.color = '#7289da';
+                indexLabel.style.fontWeight = 'bold';
+
+                header.appendChild(checkbox);
+                header.appendChild(indexLabel);
+
+                const imgTag = document.createElement('img');
+                imgTag.src = frame.url;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'filename';
+                nameSpan.innerText = frame.filename;
+
+                container.appendChild(header);
+                container.appendChild(imgTag);
+                container.appendChild(nameSpan);
+                
+                // --- 클릭 및 더블클릭 이벤트 (모달) ---
+                container.addEventListener('click', (e) => {
+                    // 체크박스 클릭 시에는 무시 (중복 토글 방지)
+                    if(e.target !== checkbox) checkbox.checked = !checkbox.checked;
+                });
+                
+                container.addEventListener('dblclick', () => {
+                    currentEditIndex = index;
+                    modalImg.src = frame.url;
+                    // 확장자 '.png'를 제외한 이름만 인풋에 표시
+                    modalFilenameInput.value = frame.filename.replace(/\.[^/.]+$/, "");
+                    modalOverlay.style.display = 'flex';
+                });
+
+                previewArea.appendChild(container);
+            });
+            updateUI();
+        }
+
+        // ----------------------------------------------------
+        // [개선 1 & 3] 모달 제어 로직
+        // ----------------------------------------------------
+        modalCloseBtn.addEventListener('click', () => modalOverlay.style.display = 'none');
+        modalSaveBtn.addEventListener('click', () => {
+            if (currentEditIndex > -1) {
+                const newName = modalFilenameInput.value.trim();
+                if(newName) {
+                    currentFrames[currentEditIndex].filename = newName + '.png';
+                    renderPreview();
+                }
+            }
+            modalOverlay.style.display = 'none';
+        });
+
+        function hexToRgb(hex) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return { r, g, b };
+        }
+
+        function applyChromaKey(ctx, width, height, keyColor, threshold) {
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const data = imgData.data;
+            const maxDistance = threshold * 4.42;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const distance = Math.sqrt(
+                    Math.pow(data[i] - keyColor.r, 2) + Math.pow(data[i + 1] - keyColor.g, 2) + Math.pow(data[i + 2] - keyColor.b, 2)
+                );
+                if (distance < maxDistance) data[i + 3] = 0;
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        // 툴바 버튼 이벤트
+        btnSelectAll.addEventListener('click', () => {
+            const checkboxes = document.querySelectorAll('.frame-cb');
+            if(checkboxes.length === 0) return;
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            checkboxes.forEach(cb => cb.checked = !allChecked);
+        });
+
+        btnDeleteSelected.addEventListener('click', () => {
+            const checkboxes = Array.from(document.querySelectorAll('.frame-cb:checked'));
+            if (checkboxes.length === 0) return alert('삭제할 프레임을 선택하세요.');
+            const indicesToRemove = checkboxes.map(cb => parseInt(cb.dataset.index, 10));
+            currentFrames = currentFrames.filter((frame, i) => {
+                if (indicesToRemove.includes(i)) { URL.revokeObjectURL(frame.url); return false; }
+                return true;
+            });
+            if(autoRenameCb.checked) autoRenumberFrames(); else renderPreview();
+        });
+
+        btnDuplicateSelected.addEventListener('click', async () => {
+            const checkboxes = Array.from(document.querySelectorAll('.frame-cb:checked'));
+            if (checkboxes.length === 0) return alert('복제할 프레임을 선택하세요.');
+            const indicesToCopy = checkboxes.map(cb => parseInt(cb.dataset.index, 10));
+            let newFrames = [];
+            for(let i = 0; i < currentFrames.length; i++) {
+                newFrames.push(currentFrames[i]);
+                if(indicesToCopy.includes(i)) {
+                    const original = currentFrames[i];
+                    const newUrl = URL.createObjectURL(original.blob);
+                    const newImg = new Image();
+                    await new Promise(res => { newImg.onload = res; newImg.src = newUrl; });
+                    newFrames.push({ blob: original.blob, url: newUrl, filename: original.filename.replace('.png', '_copy.png'), imgElement: newImg });
+                }
+            }
+            currentFrames = newFrames;
+            if(autoRenameCb.checked) autoRenumberFrames(); else renderPreview();
+        });
+
+        btnApplyChroma.addEventListener('click', async () => {
+            const checkboxes = Array.from(document.querySelectorAll('.frame-cb:checked'));
+            if (checkboxes.length === 0) return alert('이미지를 선택해주세요.');
+            const keyColorRgb = hexToRgb(chromaColorInput.value);
+            const threshold = parseInt(chromaThresholdNum.value, 10);
+            globalStatus.innerText = `선택된 ${checkboxes.length}개 이미지 처리 중...`;
+
+            for (let cb of checkboxes) {
+                const index = parseInt(cb.dataset.index, 10);
+                const frame = currentFrames[index];
+                canvas.width = frame.imgElement.naturalWidth;
+                canvas.height = frame.imgElement.naturalHeight;
+                ctx.drawImage(frame.imgElement, 0, 0);
+                applyChromaKey(ctx, canvas.width, canvas.height, keyColorRgb, threshold);
+                const newBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                const newUrl = URL.createObjectURL(newBlob);
+                URL.revokeObjectURL(frame.url);
+                frame.blob = newBlob; frame.url = newUrl;
+                await new Promise(resolve => { frame.imgElement.onload = resolve; frame.imgElement.src = newUrl; });
+            }
+            renderPreview();
+            globalStatus.innerText = '선택한 이미지에 크로마키 적용이 완료되었습니다!';
+        });
+
+        // 비디오 추출
+        videoUpload.addEventListener('change', (e) => {
+            if (!e.target.files[0]) return;
+            if (videoFileUrl) URL.revokeObjectURL(videoFileUrl);
+            videoFileUrl = URL.createObjectURL(e.target.files[0]);
+            video.src = videoFileUrl;
+            video.onloadedmetadata = () => { extractRawBtn.disabled = false; extractChromaBtn.disabled = false; };
+        });
+
+        async function processVideoExtraction(useChroma) {
+            extractRawBtn.disabled = true; extractChromaBtn.disabled = true;
+            const interval = 1 / (parseInt(document.getElementById('fps-input').value, 10) || 10);
+            const MAX_WIDTH = 512;
+            let scale = 1; if (video.videoWidth > MAX_WIDTH) scale = MAX_WIDTH / video.videoWidth;
+            canvas.width = video.videoWidth * scale; canvas.height = video.videoHeight * scale;
+
+            const keyColorRgb = hexToRgb(chromaColorInput.value);
+            const threshold = parseInt(chromaThresholdNum.value, 10);
+            const prefix = prefixInput.value.trim() || 'frame';
+
+            let currentTime = 0, frameIndex = currentFrames.length; // 기존 길이에 이어서 번호 매김
+
+            while (currentTime < video.duration) {
+                video.currentTime = currentTime;
+                await new Promise(resolve => video.addEventListener('seeked', resolve, { once: true }));
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                if (useChroma) applyChromaKey(ctx, canvas.width, canvas.height, keyColorRgb, threshold);
+                
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                try {
+                    const url = URL.createObjectURL(blob);
+                    const filename = `${prefix}_${String(frameIndex).padStart(4, '0')}.png`;
+                    const imgElement = new Image();
+                    await new Promise(res => { imgElement.onload = res; imgElement.src = url; });
+                    currentFrames.push({ blob, url, filename, imgElement });
+                } catch (error) {}
+                currentTime += interval; frameIndex++;
+                if(frameIndex % 10 === 0) renderPreview(); 
+            }
+            if(autoRenameCb.checked) autoRenumberFrames(); else renderPreview();
+            extractRawBtn.disabled = false; extractChromaBtn.disabled = false;
+        }
+
+        extractRawBtn.addEventListener('click', () => processVideoExtraction(false));
+        extractChromaBtn.addEventListener('click', () => processVideoExtraction(true));
+
+        // ----------------------------------------------------
+        // [개선 2] 다중 이미지 추가 시 모두 PNG로 강제 변환
+        // ----------------------------------------------------
+        imageUpload.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+            files.sort((a, b) => a.name.localeCompare(b.name));
+            globalStatus.innerText = '이미지 PNG 변환 및 로딩 중...';
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                let finalBlob = file;
+                let finalUrl = URL.createObjectURL(file);
+                let finalName = file.name.replace(/\.[^/.]+$/, "") + ".png"; // 무조건 .png로 끝남
+
+                const tempImg = new Image();
+                await new Promise(res => { tempImg.onload = res; tempImg.src = finalUrl; });
+
+                // 브라우저 캔버스를 통해 강제 PNG 재인코딩 처리
+                canvas.width = tempImg.naturalWidth;
+                canvas.height = tempImg.naturalHeight;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(tempImg, 0, 0);
+                
+                finalBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                URL.revokeObjectURL(finalUrl); // 원본 메모리 해제
+                finalUrl = URL.createObjectURL(finalBlob);
+
+                const imgElement = new Image();
+                await new Promise(res => { imgElement.onload = res; imgElement.src = finalUrl; });
+                
+                currentFrames.push({ blob: finalBlob, url: finalUrl, filename: finalName, imgElement: imgElement });
+            }
+            if(autoRenameCb.checked) autoRenumberFrames(); else renderPreview();
+            globalStatus.innerText = `${files.length}장의 이미지가 추가되었습니다.`;
+            imageUpload.value = ''; 
+        });
+
+        // 결과물 다운로드 로직 유지
+        downloadResultBtn.addEventListener('click', () => {
+            const a = document.createElement('a');
+            a.href = resultBlobUrl; a.download = resultFileName; a.click();
+        });
+
+        makeGifBtn.addEventListener('click', () => {
+            if (currentFrames.length === 0) return;
+            globalStatus.innerText = 'GIF 렌더링 중... (화면이 잠시 멈출 수 있습니다)';
+            const fps = parseInt(gifFpsInput.value, 10) || 10;
+            const gif = new GIF({
+                workers: 2, quality: 10, width: currentFrames[0].imgElement.naturalWidth, height: currentFrames[0].imgElement.naturalHeight, transparent: 'rgba(0,0,0,0)',
+                workerScript: URL.createObjectURL(new Blob([`importScripts('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');`], { type: 'application/javascript' }))
+            });
+            currentFrames.forEach(frame => { if (frame.imgElement.complete) gif.addFrame(frame.imgElement, { delay: 1000 / fps, copy: true }); });
+            gif.on('finished', function (blob) {
+                if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
+                resultBlobUrl = URL.createObjectURL(blob);
+                resultFileName = 'motion_asset.gif';
+                resultImage.src = resultBlobUrl;
+                resultArea.style.display = 'block';
+                globalStatus.innerText = 'GIF 생성이 완료되었습니다.';
+            });
+            gif.render();
+        });
+
+        makeSpriteBtn.addEventListener('click', () => {
+            if (currentFrames.length === 0) return;
+            globalStatus.innerText = '스프라이트 시트 병합 중...';
+            const width = currentFrames[0].imgElement.naturalWidth;
+            const height = currentFrames[0].imgElement.naturalHeight;
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width * currentFrames.length; tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            currentFrames.forEach((frame, index) => tempCtx.drawImage(frame.imgElement, index * width, 0, width, height));
+            tempCanvas.toBlob((blob) => {
+                if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
+                resultBlobUrl = URL.createObjectURL(blob);
+                resultFileName = 'sprite_sheet.png';
+                resultImage.src = resultBlobUrl;
+                resultArea.style.display = 'block';
+                globalStatus.innerText = '스프라이트 시트 생성이 완료되었습니다.';
+            }, 'image/png');
+        });
+
+        downloadZipBtn.addEventListener('click', () => {
+            if (currentFrames.length === 0) return;
+            globalStatus.innerText = 'ZIP 파일 압축 중...';
+            const zip = new JSZip();
+            const folder = zip.folder("Extracted_Frames");
+            currentFrames.forEach(frame => folder.file(frame.filename, frame.blob));
+            zip.generateAsync({ type: "blob" }).then(content => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = `${prefixInput.value.trim() || 'Frames_Archive'}.zip`;
+                link.click();
+                globalStatus.innerText = 'ZIP 다운로드가 완료되었습니다.';
+            });
+        });
+    </script>
+</body>
+</html>
